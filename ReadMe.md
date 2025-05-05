@@ -17,7 +17,7 @@
 
 1. 克隆仓库：
 ```bash
-git clone https://github.com/your-repo/python-editonline.git
+git clone https://github.com/2012szc/python-editonline.git
 cd python-editonline
 ```
 
