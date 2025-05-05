@@ -26,8 +26,11 @@ import subprocess
 import os
 import tempfile
 from werkzeug.utils import secure_filename
+from flask import send_from_directory
 
 app = Flask(__name__)
+app.config['UPLOAD_FOLDER'] = 'edit'
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 class OutputCapture:
     """自定义 stdout 捕获类"""
@@ -46,6 +49,93 @@ class OutputCapture:
 @app.route('/')
 def home():
     return "Welcome to the Python Code Runner"
+
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    """处理文件上传"""
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+    
+    if file:
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+        # 返回文件名和完整访问URL
+        return jsonify({
+            'filename': filename,
+            'url': f"http://{request.host}/static/index.html?f={filename}"
+        }), 200
+
+@app.route('/save', methods=['POST'])
+def save_file():
+    """保存当前编辑的文件"""
+    data = request.json
+    filename = data.get('filename')
+    code = data.get('code')
+    
+    if not filename or not code:
+        return jsonify({'error': 'Filename and code are required'}), 400
+    
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(filename))
+    with open(filepath, 'w') as f:
+        f.write(code)
+    
+    return jsonify({'message': 'File saved successfully'}), 200
+
+@app.route('/delete_file', methods=['POST'])
+def delete_file():
+    """删除指定文件"""
+    data = request.json
+    filename = data.get('filename')
+    
+    if not filename:
+        return jsonify({'error': 'Filename is required'}), 400
+    
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(filename))
+    
+    if not os.path.exists(filepath):
+        return jsonify({'error': 'File not found'}), 404
+    
+    try:
+        os.remove(filepath)
+        return jsonify({'success': True}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/load', methods=['GET'])
+def load_file():
+    """加载指定文件"""
+    filename = request.args.get('filename')
+    if not filename:
+        return jsonify({'error': 'Filename is required'}), 400
+    
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(filename))
+    if not os.path.exists(filepath):
+        return jsonify({'error': 'File not found'}), 404
+    
+    with open(filepath, 'r') as f:
+        content = f.read()
+    
+    return jsonify({'content': content}), 200
+
+@app.route('/list_files', methods=['GET'])
+def list_files():
+    """列出所有可编辑文件"""
+    files = []
+    for filename in os.listdir(app.config['UPLOAD_FOLDER']):
+        if filename.endswith('.py'):
+            files.append(filename)
+    
+    return jsonify({'files': files}), 200
+
+@app.route('/edit/<filename>')
+def serve_edit_file(filename):
+    """提供编辑文件下载"""
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 @app.route('/terminal', methods=['POST'])
 def terminal():
